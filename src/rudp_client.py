@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import path_setup  # noqa: F401
-
 import argparse
 import socket
 import sys
