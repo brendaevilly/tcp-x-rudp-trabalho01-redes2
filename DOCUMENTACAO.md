@@ -57,18 +57,13 @@ Ferramentas opcionais (host ou Docker):
 - `iproute2` (`tc`) — simulação de perda/latência
 - Docker + Docker Compose — ambiente isolado
 
-### 2. Arquivo `.env`
-
-```bash
-cp .env.example .env
-# Edite STUDENT_MATRICULA e STUDENT_NOME
-```
+### 2. Arquivo `.env
 
 Exemplo:
 
 ```env
-STUDENT_MATRICULA=20231234567
-STUDENT_NOME=Brenda Silva
+STUDENT_MATRICULA=20249007096
+STUDENT_NOME=Brenda Evilyl Oliveira de Moura
 ```
 
 O hash aparece ao executar:
@@ -196,12 +191,27 @@ Arquivos recebidos em `received/`. Métricas em `logs/transfers.jsonl`.
 No host que envia (cliente), com interface correta (ex.: `eth0` ou `wlan0`):
 
 ```bash
-sudo ./scripts/setup_tc.sh A eth0
+sudo ./scripts/setup_tc.sh A wlp0s20f3
+python3 src/tcp_client.py data/testfile.bin --scenario A --run-id 1
 python3 src/rudp_client.py data/testfile.bin --scenario A --run-id 1
-sudo ./scripts/setup_tc.sh clear eth0
+sudo ./scripts/setup_tc.sh clear wlp0s20f3
 ```
 
 Repita para `B` e `C`.
+
+```bash
+sudo ./scripts/setup_tc.sh B wlp0s20f3
+python3 src/tcp_client.py data/testfile.bin --scenario B --run-id 1
+python3 src/rudp_client.py data/testfile.bin --scenario B --run-id 1
+sudo ./scripts/setup_tc.sh clear wlp0s20f3
+```
+
+```bash
+sudo ./scripts/setup_tc.sh C wlp0s20f3
+python3 src/tcp_client.py data/testfile.bin --scenario C --run-id 1
+python3 src/rudp_client.py data/testfile.bin --scenario C --run-id 1
+sudo ./scripts/setup_tc.sh clear wlp0s20f3
+```
 
 ### Benchmark completo (10–30 execuções)
 

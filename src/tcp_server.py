@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Servidor R-UDP (Stop-and-Wait) — recebe arquivo com confiabilidade."""
+"""Servidor TCP — recebe arquivo com cabeçalho X-Custom-Auth."""
 
 from __future__ import annotations
 
@@ -10,89 +10,71 @@ import socket
 import sys
 from pathlib import Path
 
-from src.config import RECEIVED_DIR, RUDP_PORT
-from src.rudp_protocol import MsgType, pack_packet, unpack_packet
+from src.config import RECEIVED_DIR, TCP_PORT, custom_auth_hash
 
 
-class RudpServer:
-    def __init__(self, host: str, port: int) -> None:
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((host, port))
-        self.client_addr: tuple[str, int] | None = None
+def recv_line(conn: socket.socket) -> str:
+    buf = b""
+    while b"\n" not in buf:
+        chunk = conn.recv(1)
+        if not chunk:
+            break
+        buf += chunk
+    return buf.decode("utf-8", errors="replace").strip()
 
-    def send_ack(self, seq: int, ack: int) -> None:
-        if self.client_addr is None:
-            return
-        pkt = pack_packet(MsgType.ACK, seq, ack)
-        self.sock.sendto(pkt, self.client_addr)
 
-    def recv_packet(self) -> tuple[MsgType, int, int, bytes]:
-        while True:
-            data, addr = self.sock.recvfrom(65535)
-            try:
-                mtype, seq, ack, payload, _ = unpack_packet(data)
-                self.client_addr = addr
-                return mtype, seq, ack, payload
-            except ValueError as exc:
-                print(f"[RUDP] Pacote inválido de {addr}: {exc}", file=sys.stderr)
+def handle_client(conn: socket.socket, addr: tuple[str, int]) -> None:
+    auth_line = recv_line(conn)
+    if not auth_line.startswith("X-Custom-Auth:"):
+        print(f"[TCP] Auth ausente de {addr}", file=sys.stderr)
+        conn.close()
+        return
+    token = auth_line.split(":", 1)[1].strip()
+    if token != custom_auth_hash():
+        print(f"[TCP] Auth inválido de {addr}", file=sys.stderr)
+        conn.close()
+        return
 
-    def wait_syn(self) -> tuple[str, int]:
-        while True:
-            mtype, _, _, payload = self.recv_packet()
-            if mtype == MsgType.SYN:
+    meta = recv_line(conn)
+    if not meta.startswith("FILE "):
+        print(f"[TCP] Meta inválida: {meta}", file=sys.stderr)
+        conn.close()
+        return
+    parts = meta.split()
+    filename = parts[1]
+    file_size = int(parts[2])
+    dest = RECEIVED_DIR / f"tcp_{filename}"
+    received = 0
+    with dest.open("wb") as f:
+        while received < file_size:
+            chunk = conn.recv(min(65536, file_size - received))
+            if not chunk:
                 break
-        meta = payload.decode("utf-8")
-        parts = meta.split("|")
-        if len(parts) != 2:
-            raise ValueError(f"Meta SYN inválida: {meta}")
-        filename, file_size_s = parts
-        file_size = int(file_size_s)
-        return filename, file_size
-
-    def run(self) -> None:
-        filename, file_size = self.wait_syn()
-        expected_seq = 0
-        self.send_ack(seq=0, ack=expected_seq)
-
-        dest = RECEIVED_DIR / f"rudp_{filename}"
-        received = 0
-        with dest.open("wb") as f:
-            while received < file_size:
-                mtype, seq, _, payload = self.recv_packet()
-                if mtype == MsgType.DATA:
-                    if seq == expected_seq:
-                        f.write(payload)
-                        received += len(payload)
-                        expected_seq = (expected_seq + 1) % (2**32)
-                    self.send_ack(seq=0, ack=expected_seq)
-
-        while True:
-            mtype, _, _, _ = self.recv_packet()
-            if mtype == MsgType.FIN:
-                self.send_ack(seq=0, ack=expected_seq)
-                break
-
-        print(f"[RUDP] Salvo {dest} ({received}/{file_size} bytes)")
-
-    def close(self) -> None:
-        self.sock.close()
+            f.write(chunk)
+            received += len(chunk)
+    conn.sendall(b"OK\n")
+    print(f"[TCP] {addr} -> {dest} ({received}/{file_size} bytes)")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Servidor R-UDP")
+    parser = argparse.ArgumentParser(description="Servidor TCP de transferência")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=RUDP_PORT)
+    parser.add_argument("--port", type=int, default=TCP_PORT)
     args = parser.parse_args()
-    server = RudpServer(args.host, args.port)
-    print(f"[RUDP] Escutando em {args.host}:{args.port}")
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((args.host, args.port))
+    sock.listen(5)
+    print(f"[TCP] Escutando em {args.host}:{args.port}")
     try:
         while True:
-            server.run()
+            conn, addr = sock.accept()
+            handle_client(conn, addr)
     except KeyboardInterrupt:
-        print("\n[RUDP] Encerrando.")
+        print("\n[TCP] Encerrando.")
     finally:
-        server.close()
+        sock.close()
 
 
 if __name__ == "__main__":

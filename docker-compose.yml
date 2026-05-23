@@ -2,7 +2,7 @@ services:
   server:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: redes2-server
     hostname: server
     cap_add:
@@ -15,12 +15,12 @@ services:
              python3 src/rudp_server.py --host 0.0.0.0 &
              wait"
     volumes:
-      - ..:/app
+      - .:/app
     
   client:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: redes2-client
     hostname: client
     cap_add:
@@ -31,7 +31,7 @@ services:
       redes_net:
         ipv4_address: 172.28.0.20
     volumes:
-      - ..:/app
+      - .:/app
     stdin_open: true
     tty: true
 
