@@ -32,8 +32,8 @@ STUDENT_MATRICULA = os.environ.get("STUDENT_MATRICULA", "20249007096")
 STUDENT_NOME = os.environ.get("STUDENT_NOME", "Brenda Evilly Oliveira de Moura")
 TCP_PORT = int(os.environ.get("TCP_PORT", "5000"))
 RUDP_PORT = int(os.environ.get("RUDP_PORT", "5001"))
-CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "1024"))
-RUDP_TIMEOUT = float(os.environ.get("RUDP_TIMEOUT", "2.0"))
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "8192"))
+RUDP_TIMEOUT = float(os.environ.get("RUDP_TIMEOUT", "3.0"))
 RUDP_MAX_RETRIES = int(os.environ.get("RUDP_MAX_RETRIES", "20"))
 
 def custom_auth_hash() -> str:

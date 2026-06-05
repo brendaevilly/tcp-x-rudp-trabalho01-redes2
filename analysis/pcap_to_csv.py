@@ -62,9 +62,9 @@ def export_pcap(pcap: Path, out_csv: Path) -> None:
     tcp_bytes = 0
     udp_bytes = 0
     for row in rows[1:]:
-        if len(row) < 8:
+        if len(row) < 7:
             continue
-        tcp_len, udp_len = row[5], row[6]
+        tcp_len, udp_len = row[4].strip(), row[5].strip()
         if tcp_len:
             tcp_bytes += int(tcp_len)
         if udp_len:

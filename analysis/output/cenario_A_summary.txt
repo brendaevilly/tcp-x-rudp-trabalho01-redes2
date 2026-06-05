@@ -1,0 +1,4 @@
+Pacotes (sem cabeçalho): 251
+Bytes payload TCP (tcp.len): 512108
+Bytes UDP incl. cabeçalho UDP (udp.length): 5179
+Tempo relativo máximo: consulte coluna frame.time_relative no CSV

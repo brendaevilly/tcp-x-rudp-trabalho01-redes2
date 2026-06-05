@@ -38,11 +38,17 @@ class RudpServer:
                 print(f"[RUDP] Pacote inválido de {addr}: {exc}", file=sys.stderr)
 
     def wait_syn(self) -> tuple[str, int]:
+        """Aguarda SYN e reenvia o ACK a cada retransmissão do cliente."""
+        last_payload: bytes = b""
         while True:
             mtype, _, _, payload = self.recv_packet()
             if mtype == MsgType.SYN:
+                last_payload = payload
+                # Envia ACK do SYN imediatamente; se o cliente não receber,
+                # ele reenviará o SYN e faremos ACK novamente.
+                self.send_ack(seq=0, ack=0)
                 break
-        meta = payload.decode("utf-8")
+        meta = last_payload.decode("utf-8")
         parts = meta.split("|")
         if len(parts) != 2:
             raise ValueError(f"Meta SYN inválida: {meta}")
@@ -53,13 +59,17 @@ class RudpServer:
     def run(self) -> None:
         filename, file_size = self.wait_syn()
         expected_seq = 0
-        self.send_ack(seq=0, ack=expected_seq)
 
         dest = RECEIVED_DIR / f"rudp_{filename}"
         received = 0
         with dest.open("wb") as f:
             while received < file_size:
                 mtype, seq, _, payload = self.recv_packet()
+                if mtype == MsgType.SYN:
+                    # Cliente retransmitiu o SYN porque o ACK se perdeu;
+                    # reenvia ACK do SYN sem reprocessar o arquivo.
+                    self.send_ack(seq=0, ack=0)
+                    continue
                 if mtype == MsgType.DATA:
                     if seq == expected_seq:
                         f.write(payload)
@@ -68,10 +78,14 @@ class RudpServer:
                     self.send_ack(seq=0, ack=expected_seq)
 
         while True:
-            mtype, _, _, _ = self.recv_packet()
+            mtype, seq, _, _ = self.recv_packet()
             if mtype == MsgType.FIN:
                 self.send_ack(seq=0, ack=expected_seq)
                 break
+            if mtype == MsgType.DATA:
+                # Último chunk pode ser retransmitido antes do FIN chegar;
+                # responde com o ACK atual para que o cliente avance.
+                self.send_ack(seq=0, ack=expected_seq)
 
         print(f"[RUDP] Salvo {dest} ({received}/{file_size} bytes)")
 

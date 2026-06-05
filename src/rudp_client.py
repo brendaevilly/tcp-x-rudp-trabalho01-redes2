@@ -21,8 +21,23 @@ class RudpClient:
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._base_timeout = timeout
         self.sock.settimeout(timeout)
         self.retransmissions = 0
+
+    def set_scenario_timeout(self, scenario: str) -> None:
+        """Ajusta o timeout de acordo com o cenário de rede simulado.
+
+        O timeout ideal é 3-5× o RTT esperado, permitindo variação
+        sem desperdiçar tempo em esperas desnecessárias.
+
+        Cenário A (10 ms delay → ~20 ms RTT):  0.2 s (10× RTT)
+        Cenário B (50 ms delay → ~100 ms RTT):  0.5 s (5× RTT)
+        Cenário C (100 ms delay → ~200 ms RTT): 1.0 s (5× RTT)
+        """
+        timeouts = {"A": 0.2, "B": 0.5, "C": 1.0}
+        t = timeouts.get(scenario, self._base_timeout)
+        self.sock.settimeout(t)
 
     def send_wait_ack(
         self,
@@ -37,11 +52,14 @@ class RudpClient:
                 mtype, _, ack, _, _ = unpack_packet(data)
                 if mtype == MsgType.ACK and ack == expected_ack:
                     return
+                # ACK com valor inesperado — trata como perda implícita
+                self.retransmissions += 1
             except socket.timeout:
-                if attempt > 0:
-                    self.retransmissions += 1
+                # Toda vez que há timeout após o envio inicial é retransmissão.
+                self.retransmissions += 1
                 continue
             except ValueError:
+                self.retransmissions += 1
                 continue
         raise TimeoutError(f"Sem ACK para seq esperado ack={expected_ack}")
 
@@ -51,6 +69,7 @@ class RudpClient:
         scenario: str,
         run_id: int,
     ) -> TransferMetrics:
+        self.set_scenario_timeout(scenario)
         data = file_path.read_bytes()
         file_size = len(data)
         chunk = max_payload_size()
